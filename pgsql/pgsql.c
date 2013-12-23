@@ -112,10 +112,16 @@ cleanup:
     return error;
 }
 
+static int complete_pq_exec(PGresult *result)
+{
+    ExecStatusType exec_status = PQresultStatus(result);
+    PQclear(result);
+    return (PGRES_COMMAND_OK != exec_status);
+}
+
 static int init_db(PGconn *db)
 {
     PGresult *result;
-    ExecStatusType exec_status;
 
     result = PQexec(db,
         /* run as plpgsql so if statement works */
@@ -153,28 +159,19 @@ static int init_db(PGconn *db)
 
         /* end plpgsql statement */
         "END; $BODY$");
-
-    exec_status = PQresultStatus(result);
-    PQclear(result);
-    if (PGRES_COMMAND_OK != exec_status)
-        return 1;
-
-    return 0;
+    return complete_pq_exec(result);
 }
 
 static int prepare_stmts(PGconn *db)
 {
     PGresult *result;
-    ExecStatusType exec_status;
 
     result = PQprepare(db, "read",
         "SELECT \"type\", \"size\", \"data\""
         "  FROM \"" GIT2_TABLE_NAME "\""
         "  WHERE \"oid\" = $1::bytea",
         1, NULL);
-    exec_status = PQresultStatus(result);
-    PQclear(result);
-    if (PGRES_COMMAND_OK != exec_status)
+    if (complete_pq_exec(result))
         return 1;
 
     return 0;
