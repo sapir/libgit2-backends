@@ -24,6 +24,7 @@
  */
 
 #include <assert.h>
+#include <string.h>
 #include <libpq-fe.h>
 #include <git2.h>
 #include <git2/sys/odb_backend.h>
@@ -41,12 +42,74 @@ typedef struct {
 } pgsql_backend;
 
 
+static void set_giterr_from_pg(pgsql_backend *backend)
+{
+    giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
+}
+
 static void pgsql_backend__free(git_odb_backend *_backend)
 {
     pgsql_backend *backend = (pgsql_backend*)_backend;
     assert(backend);
 
     PQfinish(backend->db);
+}
+
+static int pgsql_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
+    git_odb_backend *_backend, const git_oid *oid)
+{
+    pgsql_backend *backend = (pgsql_backend*)_backend;
+    PGresult *result;
+    const char * const param_values[1] = {oid->id};
+    int param_lengths[1] = {20};
+    int param_formats[1] = {1};     /* binary */
+    int error = GIT_ERROR;
+    int value_len;
+
+    assert(len_p && type_p && backend && oid);
+
+    result = PQexecPrepared(backend->db, "read",
+        1, param_values, param_lengths, param_formats,
+        /* binary result */ 1);
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        error = GIT_ERROR;
+        set_giterr_from_pg(backend);
+        goto cleanup;
+    }
+
+    if (PQntuples(result) == 0) {
+        error = GIT_ENOTFOUND;
+        goto cleanup;
+    }
+
+    value_len = PQgetlength(result, 0, 0);
+    if (value_len != sizeof(*type_p)) {
+        error = GIT_ERROR;
+        giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
+        goto cleanup;
+    }
+
+    value_len = PQgetlength(result, 0, 0);
+    if (value_len != sizeof(*len_p)) {
+        error = GIT_ERROR;
+        giterr_set_str(GITERR_ODB, "\"size\" column has bad size");
+        goto cleanup;
+    }
+
+    memcpy(type_p, PQgetvalue(result, 0, 0), sizeof(*type_p));
+    memcpy(len_p, PQgetvalue(result, 0, 1), sizeof(*len_p));
+
+    value_len = PQgetlength(result, 0, 2);
+    if (value_len > 0) {
+        *data_p = git_odb_backend_malloc(_backend, value_len);
+        memcpy(data_p, PQgetvalue(result, 0, 2), value_len);
+    }
+
+    error = GIT_OK;
+
+cleanup:
+    PQclear(result);
+    return error;
 }
 
 static int init_db(PGconn *db)
@@ -141,8 +204,8 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
     if (error)
         goto cleanup;
 
-    /*backend->parent.read = &pgsql_backend__read;
-    backend->parent.read_header = &pgsql_backend__read_header;
+    backend->parent.read = &pgsql_backend__read;
+    /*backend->parent.read_header = &pgsql_backend__read_header;
     backend->parent.write = &pgsql_backend__write;
     backend->parent.exists = &pgsql_backend__exists;*/
     backend->parent.free = &pgsql_backend__free;
@@ -151,7 +214,7 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
     return GIT_OK;
 
 cleanup:
-    giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
+    set_giterr_from_pg(backend);
     pgsql_backend__free((git_odb_backend*)backend);
     return GIT_ERROR;
 }
