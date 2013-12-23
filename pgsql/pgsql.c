@@ -30,6 +30,7 @@
 
 
 #define GIT2_TABLE_NAME "git2_odb"
+#define GIT2_PK_NAME "git2_odb_pkey"
 #define GIT2_TYPE_IDX_NAME "git2_odb_idx_type"
 #define GIT2_SIZE_IDX_NAME "git2_odb_idx_size"
 
@@ -54,20 +55,41 @@ static int init_db(PGconn *db)
   ExecStatusType exec_status;
 
   result = PQexec(db,
+    /* run as plpgsql so if statement works */
+    "DO $BODY$ BEGIN "
+
     "CREATE TABLE IF NOT EXISTS \"" GIT2_TABLE_NAME "\" ("
     "  \"oid\" bytea NOT NULL DEFAULT '',"
     "  \"type\" int NOT NULL,"
     "  \"size\" bigint NOT NULL,"
     "  \"data\" bytea NOT NULL,"
-    "  PRIMARY KEY (\"oid\")"
+    "  CONSTRAINT \"" GIT2_PK_NAME "\" PRIMARY KEY (\"oid\")"
     ");"
-    "CREATE INDEX IF NOT EXISTS \"" GIT2_TYPE_IDX_NAME "\""
-    "  ON \"" GIT2_TABLE_NAME "\""
-    "  (\"type\");"
-    "CREATE INDEX IF NOT EXISTS \"" GIT2_SIZE_IDX_NAME "\""
-    "  ON \"" GIT2_TABLE_NAME "\""
-    "  (\"size\");"
-    );
+
+    "IF NOT EXISTS("
+    "  select 1 from pg_index, pg_class"
+    "  where pg_index.indexrelid = pg_class.oid"
+    "    and pg_class.relname = '" GIT2_TYPE_IDX_NAME "'"
+    ")"
+    "THEN"
+    "  CREATE INDEX \"" GIT2_TYPE_IDX_NAME "\""
+    "    ON \"" GIT2_TABLE_NAME "\""
+    "    (\"type\");"
+    "END IF;"
+
+    "IF NOT EXISTS("
+    "  select 1 from pg_index, pg_class"
+    "  where pg_index.indexrelid = pg_class.oid"
+    "    and pg_class.relname = '" GIT2_SIZE_IDX_NAME "'"
+    ")"
+    "THEN"
+    "  CREATE INDEX \"" GIT2_SIZE_IDX_NAME "\""
+    "    ON \"" GIT2_TABLE_NAME "\""
+    "    (\"size\");"
+    "END IF;"
+
+    /* end plpgsql statement */
+    "END; $BODY$");
 
   exec_status = PQresultStatus(result);
   PQclear(result);
@@ -102,8 +124,10 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
   int error;
 
   backend = calloc(1, sizeof(pgsql_backend));
-  if (NULL == backend)
+  if (NULL == backend) {
+    giterr_set_oom();
     return GIT_ERROR;
+  }
 
   backend->db = PQconnectdb(conninfo);
   if (PQstatus(backend->db) != CONNECTION_OK)
@@ -127,6 +151,7 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
   return GIT_OK;
 
 cleanup:
+  giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
   pgsql_backend__free((git_odb_backend*)backend);
   return GIT_ERROR;
 }
