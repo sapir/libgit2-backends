@@ -165,6 +165,28 @@ cleanup:
     return error;
 }
 
+static int pgsql_backend__exists(git_odb_backend *_backend, const git_oid *oid)
+{
+    pgsql_backend *backend = (pgsql_backend*)_backend;
+    PGresult *result;
+    int found = 0;
+
+    assert(backend && oid);
+
+    result = exec_read_stmt(backend, "read", oid);
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        goto cleanup;
+    }
+
+    if (PQntuples(result) > 0) {
+        found = 1;
+    }
+
+cleanup:
+    PQclear(result);
+    return found;
+}
+
 static int complete_pq_exec(PGresult *result)
 {
     ExecStatusType exec_status = PQresultStatus(result);
@@ -235,6 +257,14 @@ static int prepare_stmts(PGconn *db)
     if (complete_pq_exec(result))
         return 1;
 
+    result = PQprepare(db, "exists",
+        "SELECT 1"
+        "  FROM \"" GIT2_TABLE_NAME "\""
+        "  WHERE \"oid\" = $1::bytea",
+        1, NULL);
+    if (complete_pq_exec(result))
+        return 1;
+
     return 0;
 }
 
@@ -264,8 +294,8 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
 
     backend->parent.read = &pgsql_backend__read;
     backend->parent.read_header = &pgsql_backend__read_header;
-    /*backend->parent.write = &pgsql_backend__write;
-    backend->parent.exists = &pgsql_backend__exists;*/
+    /*backend->parent.write = &pgsql_backend__write;*/
+    backend->parent.exists = &pgsql_backend__exists;
     backend->parent.free = &pgsql_backend__free;
 
     *backend_out = (git_odb_backend*)backend;
