@@ -55,22 +55,51 @@ static void pgsql_backend__free(git_odb_backend *_backend)
     PQfinish(backend->db);
 }
 
-static int pgsql_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
+static PGresult *exec_read_stmt(pgsql_backend *backend, const char *stmt_name,
+    const git_oid *oid)
+{
+    const char * const param_values[1] = {oid->id};
+    int param_lengths[1] = {20};
+    int param_formats[1] = {1};     /* binary */
+    return PQexecPrepared(backend->db, stmt_name,
+        1, param_values, param_lengths, param_formats,
+        /* binary result */ 1);
+}
+
+static int get_type_and_size_from_result(PGresult *result,
+    size_t *len_p, git_otype *type_p)
+{
+    int value_len;
+
+    assert(result && len_p && type_p);
+
+    value_len = PQgetlength(result, 0, 0);
+    if (value_len != sizeof(*type_p)) {
+        giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
+        return 1;
+    }
+
+    value_len = PQgetlength(result, 0, 0);
+    if (value_len != sizeof(*len_p)) {
+        giterr_set_str(GITERR_ODB, "\"size\" column has bad size");
+        return 1;
+    }
+
+    memcpy(type_p, PQgetvalue(result, 0, 0), sizeof(*type_p));
+    memcpy(len_p, PQgetvalue(result, 0, 1), sizeof(*len_p));
+    return 0;
+}
+
+static int pgsql_backend__read_header(size_t *len_p, git_otype *type_p,
     git_odb_backend *_backend, const git_oid *oid)
 {
     pgsql_backend *backend = (pgsql_backend*)_backend;
     PGresult *result;
-    const char * const param_values[1] = {oid->id};
-    int param_lengths[1] = {20};
-    int param_formats[1] = {1};     /* binary */
     int error = GIT_ERROR;
-    int value_len;
 
     assert(len_p && type_p && backend && oid);
 
-    result = PQexecPrepared(backend->db, "read",
-        1, param_values, param_lengths, param_formats,
-        /* binary result */ 1);
+    result = exec_read_stmt(backend, "read", oid);
     if (PQresultStatus(result) != PGRES_TUPLES_OK) {
         error = GIT_ERROR;
         set_giterr_from_pg(backend);
@@ -82,22 +111,46 @@ static int pgsql_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
         goto cleanup;
     }
 
-    value_len = PQgetlength(result, 0, 0);
-    if (value_len != sizeof(*type_p)) {
+    if (get_type_and_size_from_result(result, len_p, type_p)) {
         error = GIT_ERROR;
-        giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
+        /* error string already set by function call */
         goto cleanup;
     }
 
-    value_len = PQgetlength(result, 0, 0);
-    if (value_len != sizeof(*len_p)) {
+    error = GIT_OK;
+
+cleanup:
+    PQclear(result);
+    return error;
+}
+
+static int pgsql_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
+    git_odb_backend *_backend, const git_oid *oid)
+{
+    pgsql_backend *backend = (pgsql_backend*)_backend;
+    PGresult *result;
+    int error = GIT_ERROR;
+    int value_len;
+
+    assert(len_p && type_p && backend && oid);
+
+    result = exec_read_stmt(backend, "read", oid);
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
         error = GIT_ERROR;
-        giterr_set_str(GITERR_ODB, "\"size\" column has bad size");
+        set_giterr_from_pg(backend);
         goto cleanup;
     }
 
-    memcpy(type_p, PQgetvalue(result, 0, 0), sizeof(*type_p));
-    memcpy(len_p, PQgetvalue(result, 0, 1), sizeof(*len_p));
+    if (PQntuples(result) == 0) {
+        error = GIT_ENOTFOUND;
+        goto cleanup;
+    }
+
+    if (get_type_and_size_from_result(result, len_p, type_p)) {
+        error = GIT_ERROR;
+        /* error string already set by function call */
+        goto cleanup;
+    }
 
     value_len = PQgetlength(result, 0, 2);
     if (value_len > 0) {
@@ -210,8 +263,8 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
         goto cleanup;
 
     backend->parent.read = &pgsql_backend__read;
-    /*backend->parent.read_header = &pgsql_backend__read_header;
-    backend->parent.write = &pgsql_backend__write;
+    backend->parent.read_header = &pgsql_backend__read_header;
+    /*backend->parent.write = &pgsql_backend__write;
     backend->parent.exists = &pgsql_backend__exists;*/
     backend->parent.free = &pgsql_backend__free;
 
