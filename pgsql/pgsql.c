@@ -174,6 +174,14 @@ static int prepare_stmts(PGconn *db)
     if (complete_pq_exec(result))
         return 1;
 
+    result = PQprepare(db, "read_header",
+        "SELECT \"type\", \"size\""
+        "  FROM \"" GIT2_TABLE_NAME "\""
+        "  WHERE \"oid\" = $1::bytea",
+        1, NULL);
+    if (complete_pq_exec(result))
+        return 1;
+
     return 0;
 }
 
