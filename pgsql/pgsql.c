@@ -265,6 +265,14 @@ static int prepare_stmts(PGconn *db)
     if (complete_pq_exec(result))
         return 1;
 
+    result = PQprepare(db, "write",
+        "INSERT INTO \"" GIT2_TABLE_NAME "\""
+        "  (\"oid\", \"type\", \"size\", \"data\")"
+        "  VALUES($1::bytea, $2::int, $3::int, $4::bytea)",
+        4, NULL);
+    if (complete_pq_exec(result))
+        return 1;
+
     return 0;
 }
 
