@@ -36,122 +36,122 @@
 
 
 typedef struct {
-  git_odb_backend parent;
-  PGconn *db;
+    git_odb_backend parent;
+    PGconn *db;
 } pgsql_backend;
 
 
 static void pgsql_backend__free(git_odb_backend *_backend)
 {
-  pgsql_backend *backend = (pgsql_backend*)_backend;
-  assert(backend);
+    pgsql_backend *backend = (pgsql_backend*)_backend;
+    assert(backend);
 
-  PQfinish(backend->db);
+    PQfinish(backend->db);
 }
 
 static int init_db(PGconn *db)
 {
-  PGresult *result;
-  ExecStatusType exec_status;
+    PGresult *result;
+    ExecStatusType exec_status;
 
-  result = PQexec(db,
-    /* run as plpgsql so if statement works */
-    "DO $BODY$ BEGIN "
+    result = PQexec(db,
+        /* run as plpgsql so if statement works */
+        "DO $BODY$ BEGIN "
 
-    "CREATE TABLE IF NOT EXISTS \"" GIT2_TABLE_NAME "\" ("
-    "  \"oid\" bytea NOT NULL DEFAULT '',"
-    "  \"type\" int NOT NULL,"
-    "  \"size\" bigint NOT NULL,"
-    "  \"data\" bytea NOT NULL,"
-    "  CONSTRAINT \"" GIT2_PK_NAME "\" PRIMARY KEY (\"oid\")"
-    ");"
+        "CREATE TABLE IF NOT EXISTS \"" GIT2_TABLE_NAME "\" ("
+        "  \"oid\" bytea NOT NULL DEFAULT '',"
+        "  \"type\" int NOT NULL,"
+        "  \"size\" bigint NOT NULL,"
+        "  \"data\" bytea NOT NULL,"
+        "  CONSTRAINT \"" GIT2_PK_NAME "\" PRIMARY KEY (\"oid\")"
+        ");"
 
-    "IF NOT EXISTS("
-    "  select 1 from pg_index, pg_class"
-    "  where pg_index.indexrelid = pg_class.oid"
-    "    and pg_class.relname = '" GIT2_TYPE_IDX_NAME "'"
-    ")"
-    "THEN"
-    "  CREATE INDEX \"" GIT2_TYPE_IDX_NAME "\""
-    "    ON \"" GIT2_TABLE_NAME "\""
-    "    (\"type\");"
-    "END IF;"
+        "IF NOT EXISTS("
+        "  select 1 from pg_index, pg_class"
+        "  where pg_index.indexrelid = pg_class.oid"
+        "    and pg_class.relname = '" GIT2_TYPE_IDX_NAME "'"
+        ")"
+        "THEN"
+        "  CREATE INDEX \"" GIT2_TYPE_IDX_NAME "\""
+        "    ON \"" GIT2_TABLE_NAME "\""
+        "    (\"type\");"
+        "END IF;"
 
-    "IF NOT EXISTS("
-    "  select 1 from pg_index, pg_class"
-    "  where pg_index.indexrelid = pg_class.oid"
-    "    and pg_class.relname = '" GIT2_SIZE_IDX_NAME "'"
-    ")"
-    "THEN"
-    "  CREATE INDEX \"" GIT2_SIZE_IDX_NAME "\""
-    "    ON \"" GIT2_TABLE_NAME "\""
-    "    (\"size\");"
-    "END IF;"
+        "IF NOT EXISTS("
+        "  select 1 from pg_index, pg_class"
+        "  where pg_index.indexrelid = pg_class.oid"
+        "    and pg_class.relname = '" GIT2_SIZE_IDX_NAME "'"
+        ")"
+        "THEN"
+        "  CREATE INDEX \"" GIT2_SIZE_IDX_NAME "\""
+        "    ON \"" GIT2_TABLE_NAME "\""
+        "    (\"size\");"
+        "END IF;"
 
-    /* end plpgsql statement */
-    "END; $BODY$");
+        /* end plpgsql statement */
+        "END; $BODY$");
 
-  exec_status = PQresultStatus(result);
-  PQclear(result);
-  if (PGRES_COMMAND_OK != exec_status)
-    return 1;
+    exec_status = PQresultStatus(result);
+    PQclear(result);
+    if (PGRES_COMMAND_OK != exec_status)
+        return 1;
 
-  return 0;
+    return 0;
 }
 
 static int prepare_stmts(PGconn *db)
 {
-  PGresult *result;
-  ExecStatusType exec_status;
+    PGresult *result;
+    ExecStatusType exec_status;
 
-  result = PQprepare(db, "read",
-    "SELECT \"type\", \"size\", \"data\""
-    " FROM \"" GIT2_TABLE_NAME "\""
-    " WHERE \"oid\" = $1::bytea",
-    1, NULL);
-  exec_status = PQresultStatus(result);
-  PQclear(result);
-  if (PGRES_COMMAND_OK != exec_status)
-    return 1;
+    result = PQprepare(db, "read",
+        "SELECT \"type\", \"size\", \"data\""
+        "  FROM \"" GIT2_TABLE_NAME "\""
+        "  WHERE \"oid\" = $1::bytea",
+        1, NULL);
+    exec_status = PQresultStatus(result);
+    PQclear(result);
+    if (PGRES_COMMAND_OK != exec_status)
+        return 1;
 
-  return 0;
+    return 0;
 }
 
 git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
-  const char *conninfo)
+    const char *conninfo)
 {
-  pgsql_backend *backend;
-  int error;
+    pgsql_backend *backend;
+    int error;
 
-  backend = calloc(1, sizeof(pgsql_backend));
-  if (NULL == backend) {
-    giterr_set_oom();
-    return GIT_ERROR;
-  }
+    backend = calloc(1, sizeof(pgsql_backend));
+    if (NULL == backend) {
+        giterr_set_oom();
+        return GIT_ERROR;
+    }
 
-  backend->db = PQconnectdb(conninfo);
-  if (PQstatus(backend->db) != CONNECTION_OK)
-    goto cleanup;
+    backend->db = PQconnectdb(conninfo);
+    if (PQstatus(backend->db) != CONNECTION_OK)
+        goto cleanup;
 
-  error = init_db(backend->db);
-  if (error)
-    goto cleanup;
+    error = init_db(backend->db);
+    if (error)
+        goto cleanup;
 
-  error = prepare_stmts(backend->db);
-  if (error)
-    goto cleanup;
+    error = prepare_stmts(backend->db);
+    if (error)
+        goto cleanup;
 
-  /*backend->parent.read = &pgsql_backend__read;
-  backend->parent.read_header = &pgsql_backend__read_header;
-  backend->parent.write = &pgsql_backend__write;
-  backend->parent.exists = &pgsql_backend__exists;*/
-  backend->parent.free = &pgsql_backend__free;
+    /*backend->parent.read = &pgsql_backend__read;
+    backend->parent.read_header = &pgsql_backend__read_header;
+    backend->parent.write = &pgsql_backend__write;
+    backend->parent.exists = &pgsql_backend__exists;*/
+    backend->parent.free = &pgsql_backend__free;
 
-  *backend_out = (git_odb_backend*)backend;
-  return GIT_OK;
+    *backend_out = (git_odb_backend*)backend;
+    return GIT_OK;
 
 cleanup:
-  giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
-  pgsql_backend__free((git_odb_backend*)backend);
-  return GIT_ERROR;
+    giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
+    pgsql_backend__free((git_odb_backend*)backend);
+    return GIT_ERROR;
 }
