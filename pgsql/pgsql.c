@@ -39,23 +39,23 @@
 typedef struct {
     git_odb_backend parent;
     PGconn *db;
-} pgsql_backend;
+} pgsql_odb_backend;
 
 
-static void set_giterr_from_pg(pgsql_backend *backend)
+static void set_giterr_from_pg(pgsql_odb_backend *backend)
 {
     giterr_set_str(GITERR_ODB, PQerrorMessage(backend->db));
 }
 
-static void pgsql_backend__free(git_odb_backend *_backend)
+static void pgsql_odb_backend__free(git_odb_backend *_backend)
 {
-    pgsql_backend *backend = (pgsql_backend*)_backend;
+    pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     assert(backend);
 
     PQfinish(backend->db);
 }
 
-static PGresult *exec_read_stmt(pgsql_backend *backend, const char *stmt_name,
+static PGresult *exec_read_stmt(pgsql_odb_backend *backend, const char *stmt_name,
     const git_oid *oid)
 {
     const char * const param_values[1] = {oid->id};
@@ -90,10 +90,10 @@ static int get_type_and_size_from_result(PGresult *result,
     return 0;
 }
 
-static int pgsql_backend__read_header(size_t *len_p, git_otype *type_p,
+static int pgsql_odb_backend__read_header(size_t *len_p, git_otype *type_p,
     git_odb_backend *_backend, const git_oid *oid)
 {
-    pgsql_backend *backend = (pgsql_backend*)_backend;
+    pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     PGresult *result;
     int error = GIT_ERROR;
 
@@ -124,10 +124,10 @@ cleanup:
     return error;
 }
 
-static int pgsql_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
+static int pgsql_odb_backend__read(void **data_p, size_t *len_p, git_otype *type_p,
     git_odb_backend *_backend, const git_oid *oid)
 {
-    pgsql_backend *backend = (pgsql_backend*)_backend;
+    pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     PGresult *result;
     int error = GIT_ERROR;
     int value_len;
@@ -165,9 +165,9 @@ cleanup:
     return error;
 }
 
-static int pgsql_backend__exists(git_odb_backend *_backend, const git_oid *oid)
+static int pgsql_odb_backend__exists(git_odb_backend *_backend, const git_oid *oid)
 {
-    pgsql_backend *backend = (pgsql_backend*)_backend;
+    pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     PGresult *result;
     int found = 0;
 
@@ -194,10 +194,10 @@ static int complete_pq_exec(PGresult *result)
     return (PGRES_COMMAND_OK != exec_status);
 }
 
-static int pgsql_backend__write(git_odb_backend *_backend, const git_oid *oid,
-    const void *data, size_t len, git_otype type)
+static int pgsql_odb_backend__write(git_odb_backend *_backend,
+    const git_oid *oid, const void *data, size_t len, git_otype type)
 {
-    pgsql_backend *backend = (pgsql_backend*)_backend;
+    pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     PGresult *result;
     const char * const param_values[4] = {
         oid->id,
@@ -305,10 +305,10 @@ static int prepare_stmts(PGconn *db)
 git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
     const char *conninfo)
 {
-    pgsql_backend *backend;
+    pgsql_odb_backend *backend;
     int error;
 
-    backend = calloc(1, sizeof(pgsql_backend));
+    backend = calloc(1, sizeof(pgsql_odb_backend));
     if (NULL == backend) {
         giterr_set_oom();
         return GIT_ERROR;
@@ -337,6 +337,6 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
 
 cleanup:
     set_giterr_from_pg(backend);
-    pgsql_backend__free((git_odb_backend*)backend);
+    pgsql_odb_backend__free((git_odb_backend*)backend);
     return GIT_ERROR;
 }
