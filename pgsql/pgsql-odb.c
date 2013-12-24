@@ -326,11 +326,11 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
     if (error)
         goto cleanup;
 
-    backend->parent.read = &pgsql_backend__read;
-    backend->parent.read_header = &pgsql_backend__read_header;
-    backend->parent.write = &pgsql_backend__write;
-    backend->parent.exists = &pgsql_backend__exists;
-    backend->parent.free = &pgsql_backend__free;
+    backend->parent.read = &pgsql_odb_backend__read;
+    backend->parent.read_header = &pgsql_odb_backend__read_header;
+    backend->parent.write = &pgsql_odb_backend__write;
+    backend->parent.exists = &pgsql_odb_backend__exists;
+    backend->parent.free = &pgsql_odb_backend__free;
 
     *backend_out = (git_odb_backend*)backend;
     return GIT_OK;
