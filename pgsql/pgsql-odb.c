@@ -326,6 +326,7 @@ git_error_code git_odb_backend_pgsql(git_odb_backend **backend_out,
     if (error)
         goto cleanup;
 
+    backend->parent.version = GIT_ODB_BACKEND_VERSION;
     backend->parent.read = &pgsql_odb_backend__read;
     backend->parent.read_header = &pgsql_odb_backend__read_header;
     backend->parent.write = &pgsql_odb_backend__write;
