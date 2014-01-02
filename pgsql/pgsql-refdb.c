@@ -202,6 +202,7 @@ static void pgsql_refdb_iterator__free(
 {
     pgsql_refdb_iterator *iter = (pgsql_refdb_iterator*)_iter;
     PQclear(iter->result);
+    free(iter);
 }
 
 static int pgsql_refdb_backend__lookup(
