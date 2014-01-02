@@ -131,7 +131,7 @@ static int prepare_stmts(PGconn *db)
 {
     PGresult *result;
 
-    result = PQprepare(db, "read",
+    /*result = PQprepare(db, "read",
         "SELECT \"type\", \"size\", \"data\""
         "  FROM \"" GIT2_TABLE_NAME "\""
         "  WHERE \"oid\" = $1::bytea",
@@ -161,7 +161,7 @@ static int prepare_stmts(PGconn *db)
         "  VALUES($1::bytea, $2::int, $3::int, $4::bytea)",
         4, NULL);
     if (complete_pq_exec(result))
-        return 1;
+        return 1;*/
 
     return 0;
 }
