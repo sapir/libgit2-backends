@@ -41,6 +41,13 @@ typedef struct {
     PGconn *db;
 } pgsql_refdb_backend;
 
+typedef struct {
+    git_reference_iterator parent;
+    git_refdb_backend *backend;
+    PGresult *result;
+    int cur_row;
+} pgsql_refdb_iterator;
+
 
 static void set_giterr_from_pg(pgsql_refdb_backend *backend)
 {
@@ -127,6 +134,76 @@ static char *glob_to_like_pattern(const char *glob)
     return like_pattern;
 }
 
+static int get_ref_from_result(PGresult *result, int row, git_reference **ref)
+{
+    const char *ref_name;
+    int ref_type;
+    const char *ref_tgt;
+    const char *ref_peel;
+
+    if (get_int_from_result(result, &ref_type, row, 1)) {
+        return GIT_ERROR;
+    }
+
+    ref_name = PQgetvalue(result, row, 0);
+    ref_tgt = PQgetvalue(result, row, 2);
+    ref_peel = PQgetvalue(result, row, 3);
+
+    switch (ref_type) {
+    case GIT_REF_SYMBOLIC:
+        *ref = git_reference__alloc_symbolic(ref_name, ref_tgt);
+        return GIT_OK;
+
+    case GIT_REF_OID:
+        *ref = git_reference__alloc(ref_name, (git_oid*)ref_tgt,
+            (git_oid*)ref_peel);
+        return GIT_OK;
+
+    default:
+        return GIT_ERROR;
+    }
+}
+
+static int pgsql_refdb_iterator__next(
+    git_reference **ref,
+    git_reference_iterator *_iter)
+{
+    pgsql_refdb_iterator *iter = (pgsql_refdb_iterator*)_iter;
+
+    if (iter->cur_row >= PQntuples(iter->result)) {
+        return GIT_ITEROVER;
+    }
+
+    if (get_ref_from_result(iter->result, iter->cur_row, ref)) {
+        return GIT_ERROR;
+    }
+
+    ++iter->cur_row;
+    return GIT_OK;
+}
+
+static int pgsql_refdb_iterator__next_name(
+    const char **ref_name,
+    git_reference_iterator *_iter)
+{
+    pgsql_refdb_iterator *iter = (pgsql_refdb_iterator*)_iter;
+
+    if (iter->cur_row >= PQntuples(iter->result)) {
+        return GIT_ITEROVER;
+    }
+
+    *ref_name = PQgetvalue(iter->result, iter->cur_row, 0);
+    ++iter->cur_row;
+    return GIT_OK;
+}
+
+static void pgsql_refdb_iterator__free(
+    git_reference_iterator *_iter)
+{
+    pgsql_refdb_iterator *iter = (pgsql_refdb_iterator*)_iter;
+    PQclear(iter->result);
+}
+
 static int pgsql_refdb_backend__lookup(
     git_reference **out,
     git_refdb_backend *_backend,
@@ -135,9 +212,6 @@ static int pgsql_refdb_backend__lookup(
     pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
     PGresult *result;
     int error = GIT_ERROR;
-    int ref_type;
-    const char *ref_tgt;
-    const char *ref_peel;
 
     assert(out && backend && ref_name);
 
@@ -153,20 +227,7 @@ static int pgsql_refdb_backend__lookup(
         goto cleanup;
     }
 
-    if (get_int_from_result(result, &ref_type, 0, 0)) {
-        error = GIT_ERROR;
-        goto cleanup;
-    }
-
-    ref_tgt = PQgetvalue(result, 0, 1);
-    ref_peel = PQgetvalue(result, 0, 2);
-
-    if (ref_type == GIT_REF_SYMBOLIC) {
-        *out = git_reference__alloc_symbolic(ref_name, ref_tgt);
-    } else if (ref_type == GIT_REF_OID) {
-        *out = git_reference__alloc(ref_name, (git_oid*)ref_tgt,
-            (git_oid*)ref_peel);
-    } else {
+    if (get_ref_from_result(result, 0, out)) {
         error = GIT_ERROR;
         goto cleanup;
     }
@@ -179,10 +240,37 @@ cleanup:
 }
 
 static int pgsql_refdb_backend__iterator(
-    git_reference_iterator **iter,
-    struct git_refdb_backend *backend,
+    git_reference_iterator **iter_out,
+    struct git_refdb_backend *_backend,
     const char *glob)
 {
+    pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
+    pgsql_refdb_iterator *iter = NULL;
+    int error = GIT_ERROR;
+    char *like_pattern = glob_to_like_pattern(glob);
+
+    iter = (pgsql_refdb_iterator*)calloc(1, sizeof(pgsql_refdb_iterator));
+    iter->parent.next = pgsql_refdb_iterator__next;
+    iter->parent.next_name = pgsql_refdb_iterator__next_name;
+    iter->parent.free = pgsql_refdb_iterator__free;
+    iter->backend = _backend;
+    iter->cur_row = 0;  /* ok, calloc does this */
+
+    iter->result = exec_read_stmt(backend, "iterator", like_pattern);
+    if (PQresultStatus(iter->result) != PGRES_TUPLES_OK) {
+        error = GIT_ERROR;
+        set_giterr_from_pg(backend);
+        goto err_cleanup;
+    }
+
+    *iter_out = (git_reference_iterator*)iter;
+    free(like_pattern);
+    return GIT_OK;
+
+err_cleanup:
+    free(iter);
+    free(like_pattern);
+    return error;
 }
 
 static int pgsql_refdb_backend__write(git_refdb_backend *_backend,
