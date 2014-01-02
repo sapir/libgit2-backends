@@ -258,13 +258,13 @@ static int prepare_stmts(PGconn *db)
     if (complete_pq_exec(result))
         return 1;
 
-    /*result = PQprepare(db, "read_header",
-        "SELECT \"type\", \"size\""
-        "  FROM \"" GIT2_TABLE_NAME "\""
-        "  WHERE \"oid\" = $1::bytea",
+    result = PQprepare(db, "iterator",
+        "SELECT \"name\", \"type\", \"target\", \"peel\""
+        "  FROM \"" GIT2_REFDB_TABLE_NAME "\""
+        "  WHERE \"name\" LIKE $1::text",
         1, NULL);
     if (complete_pq_exec(result))
-        return 1;*/
+        return 1;
 
     result = PQprepare(db, "exists",
         "SELECT 1"
