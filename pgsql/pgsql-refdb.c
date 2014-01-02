@@ -30,8 +30,8 @@
 #include <git2/sys/refdb_backend.h>
 
 
-#define GIT2_TABLE_NAME "git2_refdb"
-#define GIT2_PK_NAME "git2_refdb_pkey"
+#define GIT2_REFDB_TABLE_NAME "git2_refdb"
+#define GIT2_REFDB_PK_NAME "git2_refdb_pkey"
 
 
 typedef struct {
@@ -115,35 +115,12 @@ static int init_db(PGconn *db)
         /* run as plpgsql so if statement works */
         "DO $BODY$ BEGIN "
 
-        "CREATE TABLE IF NOT EXISTS \"" GIT2_TABLE_NAME "\" ("
-        "  \"oid\" bytea NOT NULL DEFAULT '',"
+        "CREATE TABLE IF NOT EXISTS \"" GIT2_REFDB_TABLE_NAME "\" ("
+        "  \"name\" text NOT NULL,"
         "  \"type\" int NOT NULL,"
-        "  \"size\" bigint NOT NULL,"
-        "  \"data\" bytea NOT NULL,"
-        "  CONSTRAINT \"" GIT2_PK_NAME "\" PRIMARY KEY (\"oid\")"
+        "  \"target\" text NOT NULL,"
+        "  CONSTRAINT \"" GIT2_REFDB_PK_NAME "\" PRIMARY KEY (\"name\")"
         ");"
-/*
-        "IF NOT EXISTS("
-        "  select 1 from pg_index, pg_class"
-        "  where pg_index.indexrelid = pg_class.oid"
-        "    and pg_class.relname = '" GIT2_TYPE_IDX_NAME "'"
-        ")"
-        "THEN"
-        "  CREATE INDEX \"" GIT2_TYPE_IDX_NAME "\""
-        "    ON \"" GIT2_TABLE_NAME "\""
-        "    (\"type\");"
-        "END IF;"
-
-        "IF NOT EXISTS("
-        "  select 1 from pg_index, pg_class"
-        "  where pg_index.indexrelid = pg_class.oid"
-        "    and pg_class.relname = '" GIT2_SIZE_IDX_NAME "'"
-        ")"
-        "THEN"
-        "  CREATE INDEX \"" GIT2_SIZE_IDX_NAME "\""
-        "    ON \"" GIT2_TABLE_NAME "\""
-        "    (\"size\");"
-        "END IF;"*/
 
         /* end plpgsql statement */
         "END; $BODY$");
