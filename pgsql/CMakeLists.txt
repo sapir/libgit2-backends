@@ -15,5 +15,5 @@ ENDIF ()
 
 # Compile and link LIBGIT2
 INCLUDE_DIRECTORIES(${LIBGIT2_INCLUDE_DIRS} ${PostgreSQL_INCLUDE_DIRS})
-ADD_LIBRARY(git2-pgsql pgsql-odb.c pgsql-refdb.c)
+ADD_LIBRARY(git2-pgsql pgsql-odb.c pgsql-refdb.c helpers.c)
 TARGET_LINK_LIBRARIES(git2-pgsql ${LIBGIT2_LIBRARIES} ${PostgreSQL_LIBRARIES})
