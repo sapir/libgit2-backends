@@ -60,6 +60,7 @@ static void pgsql_refdb_backend__free(git_refdb_backend *_backend)
     assert(backend);
 
     PQfinish(backend->db);
+    free(backend);
 }
 
 static PGresult *exec_read_stmt(pgsql_refdb_backend *backend,
