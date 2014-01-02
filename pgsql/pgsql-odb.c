@@ -59,7 +59,7 @@ static PGresult *exec_read_stmt(pgsql_odb_backend *backend, const char *stmt_nam
     const git_oid *oid)
 {
     const char * const param_values[1] = {oid->id};
-    int param_lengths[1] = {20};
+    int param_lengths[1] = {GIT_OID_RAWSZ};
     int param_formats[1] = {1};     /* binary */
     return PQexecPrepared(backend->db, stmt_name,
         1, param_values, param_lengths, param_formats,
@@ -198,7 +198,7 @@ static int pgsql_odb_backend__write(git_odb_backend *_backend,
         oid->id,
         (const char*)&fmtd_type,
         data};
-    int param_lengths[3] = {20, sizeof(fmtd_type), len};
+    int param_lengths[3] = {GIT_OID_RAWSZ, sizeof(fmtd_type), len};
     int param_formats[3] = {1, 1, 1};     /* binary */
 
     assert(data && backend && oid);
