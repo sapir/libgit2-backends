@@ -26,6 +26,7 @@
 #include <assert.h>
 #include <string.h>
 #include <libpq-fe.h>
+#include <endian.h>
 #include <git2.h>
 #include <git2/sys/odb_backend.h>
 
@@ -33,7 +34,6 @@
 #define GIT2_TABLE_NAME "git2_odb"
 #define GIT2_PK_NAME "git2_odb_pkey"
 #define GIT2_TYPE_IDX_NAME "git2_odb_idx_type"
-#define GIT2_SIZE_IDX_NAME "git2_odb_idx_size"
 
 
 typedef struct {
@@ -66,27 +66,20 @@ static PGresult *exec_read_stmt(pgsql_odb_backend *backend, const char *stmt_nam
         /* binary result */ 1);
 }
 
-static int get_type_and_size_from_result(PGresult *result,
-    size_t *len_p, git_otype *type_p)
+static int get_int_from_result(PGresult *result, int *intp, int col_idx)
 {
     int value_len;
 
-    assert(result && len_p && type_p);
+    assert(result && intp);
 
-    value_len = PQgetlength(result, 0, 0);
-    if (value_len != sizeof(*type_p)) {
+    value_len = PQgetlength(result, 0, col_idx);
+    if (value_len != sizeof(*intp)) {
         giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
         return 1;
     }
 
-    value_len = PQgetlength(result, 0, 0);
-    if (value_len != sizeof(*len_p)) {
-        giterr_set_str(GITERR_ODB, "\"size\" column has bad size");
-        return 1;
-    }
-
-    memcpy(type_p, PQgetvalue(result, 0, 0), sizeof(*type_p));
-    memcpy(len_p, PQgetvalue(result, 0, 1), sizeof(*len_p));
+    memcpy(intp, PQgetvalue(result, 0, col_idx), sizeof(*intp));
+    *intp = be32toh(*intp);
     return 0;
 }
 
@@ -111,7 +104,8 @@ static int pgsql_odb_backend__read_header(size_t *len_p, git_otype *type_p,
         goto cleanup;
     }
 
-    if (get_type_and_size_from_result(result, len_p, type_p)) {
+    if (get_int_from_result(result, type_p, 0)
+        || get_int_from_result(result, len_p, 1)) {
         error = GIT_ERROR;
         /* error string already set by function call */
         goto cleanup;
@@ -146,16 +140,16 @@ static int pgsql_odb_backend__read(void **data_p, size_t *len_p, git_otype *type
         goto cleanup;
     }
 
-    if (get_type_and_size_from_result(result, len_p, type_p)) {
+    if (get_int_from_result(result, type_p, 0)) {
         error = GIT_ERROR;
         /* error string already set by function call */
         goto cleanup;
     }
 
-    value_len = PQgetlength(result, 0, 2);
-    if (value_len > 0) {
-        *data_p = git_odb_backend_malloc(_backend, value_len);
-        memcpy(data_p, PQgetvalue(result, 0, 2), value_len);
+    *len_p = PQgetlength(result, 0, 1);
+    if (*len_p > 0) {
+        *data_p = git_odb_backend_malloc(_backend, *len_p);
+        memcpy(*data_p, PQgetvalue(result, 0, 1), *len_p);
     }
 
     error = GIT_OK;
@@ -199,18 +193,18 @@ static int pgsql_odb_backend__write(git_odb_backend *_backend,
 {
     pgsql_odb_backend *backend = (pgsql_odb_backend*)_backend;
     PGresult *result;
-    const char * const param_values[4] = {
+    uint32_t fmtd_type = htobe32(type);
+    const char * const param_values[3] = {
         oid->id,
-        (const char*)&type,
-        (const char*)&len,
+        (const char*)&fmtd_type,
         data};
-    int param_lengths[4] = {20, sizeof(type), sizeof(len), len};
-    int param_formats[4] = {1, 1, 1, 1};     /* binary */
+    int param_lengths[3] = {20, sizeof(fmtd_type), len};
+    int param_formats[3] = {1, 1, 1};     /* binary */
 
     assert(data && backend && oid);
 
     result = PQexecPrepared(backend->db, "write",
-        1, param_values, param_lengths, param_formats,
+        3, param_values, param_lengths, param_formats,
         /* binary result */ 1);
     if (complete_pq_exec(result)) {
         set_giterr_from_pg(backend);
@@ -231,7 +225,6 @@ static int init_db(PGconn *db)
         "CREATE TABLE IF NOT EXISTS \"" GIT2_TABLE_NAME "\" ("
         "  \"oid\" bytea NOT NULL DEFAULT '',"
         "  \"type\" int NOT NULL,"
-        "  \"size\" bigint NOT NULL,"
         "  \"data\" bytea NOT NULL,"
         "  CONSTRAINT \"" GIT2_PK_NAME "\" PRIMARY KEY (\"oid\")"
         ");"
@@ -247,17 +240,6 @@ static int init_db(PGconn *db)
         "    (\"type\");"
         "END IF;"
 
-        "IF NOT EXISTS("
-        "  select 1 from pg_index, pg_class"
-        "  where pg_index.indexrelid = pg_class.oid"
-        "    and pg_class.relname = '" GIT2_SIZE_IDX_NAME "'"
-        ")"
-        "THEN"
-        "  CREATE INDEX \"" GIT2_SIZE_IDX_NAME "\""
-        "    ON \"" GIT2_TABLE_NAME "\""
-        "    (\"size\");"
-        "END IF;"
-
         /* end plpgsql statement */
         "END; $BODY$");
     return complete_pq_exec(result);
@@ -268,7 +250,7 @@ static int prepare_stmts(PGconn *db)
     PGresult *result;
 
     result = PQprepare(db, "read",
-        "SELECT \"type\", \"size\", \"data\""
+        "SELECT \"type\", \"data\""
         "  FROM \"" GIT2_TABLE_NAME "\""
         "  WHERE \"oid\" = $1::bytea",
         1, NULL);
@@ -276,7 +258,7 @@ static int prepare_stmts(PGconn *db)
         return 1;
 
     result = PQprepare(db, "read_header",
-        "SELECT \"type\", \"size\""
+        "SELECT \"type\", length(\"data\")"
         "  FROM \"" GIT2_TABLE_NAME "\""
         "  WHERE \"oid\" = $1::bytea",
         1, NULL);
@@ -293,8 +275,8 @@ static int prepare_stmts(PGconn *db)
 
     result = PQprepare(db, "write",
         "INSERT INTO \"" GIT2_TABLE_NAME "\""
-        "  (\"oid\", \"type\", \"size\", \"data\")"
-        "  VALUES($1::bytea, $2::int, $3::int, $4::bytea)",
+        "  (\"oid\", \"type\", \"data\")"
+        "  VALUES($1::bytea, $2::int, $3::bytea)",
         4, NULL);
     if (complete_pq_exec(result))
         return 1;
