@@ -54,6 +54,7 @@ static void pgsql_odb_backend__free(git_odb_backend *_backend)
     assert(backend);
 
     PQfinish(backend->db);
+    free(backend);
 }
 
 static PGresult *exec_read_stmt(pgsql_odb_backend *backend, const char *stmt_name,
