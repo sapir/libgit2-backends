@@ -103,7 +103,7 @@ static char *glob_to_like_pattern(const char *glob)
 {
     const int glob_len = strlen(glob);
     /* at most, each char of the glob will be translated into 2 chars */
-    char *like_pattern = calloc(1, glob_len * 2 + 1);
+    char *like_pattern = (char*)calloc(1, glob_len * 2 + 1);
     int i = 0;
     int j = 0;
 
@@ -421,7 +421,9 @@ git_error_code git_refdb_backend_pgsql(git_refdb_backend **backend_out,
     pgsql_refdb_backend *backend;
     int error;
 
-    backend = calloc(1, sizeof(pgsql_refdb_backend));
+    /* TODO: should be currently nonexistent git_refdb_backend_malloc,
+        like the odb version */
+    backend = (pgsql_refdb_backend*)calloc(1, sizeof(pgsql_refdb_backend));
     if (NULL == backend) {
         giterr_set_oom();
         return GIT_ERROR;
