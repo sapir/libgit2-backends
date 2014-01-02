@@ -1,6 +1,7 @@
 #include <libpq-fe.h>
 #include <endian.h>
 #include <string.h>
+#include <assert.h>
 #include <git2/errors.h>
 #include "helpers.h"
 
