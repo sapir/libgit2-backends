@@ -89,8 +89,8 @@ static int pgsql_odb_backend__read_header(size_t *len_p, git_otype *type_p,
         goto cleanup;
     }
 
-    if (get_int_from_result(result, type_p, 0)
-        || get_int_from_result(result, len_p, 1)) {
+    if (get_int_from_result(result, type_p, 0, 0)
+        || get_int_from_result(result, len_p, 0, 1)) {
         error = GIT_ERROR;
         /* error string already set by function call */
         goto cleanup;
@@ -125,7 +125,7 @@ static int pgsql_odb_backend__read(void **data_p, size_t *len_p, git_otype *type
         goto cleanup;
     }
 
-    if (get_int_from_result(result, type_p, 0)) {
+    if (get_int_from_result(result, type_p, 0, 0)) {
         error = GIT_ERROR;
         /* error string already set by function call */
         goto cleanup;

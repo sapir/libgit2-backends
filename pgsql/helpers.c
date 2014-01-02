@@ -2,19 +2,19 @@
 #include <endian.h>
 #include "helpers.h"
 
-int get_int_from_result(PGresult *result, int *intp, int col_idx)
+int get_int_from_result(PGresult *result, int *intp, int row, int col)
 {
     int value_len;
 
     assert(result && intp);
 
-    value_len = PQgetlength(result, 0, col_idx);
+    value_len = PQgetlength(result, row, col);
     if (value_len != sizeof(*intp)) {
         giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
         return 1;
     }
 
-    memcpy(intp, PQgetvalue(result, 0, col_idx), sizeof(*intp));
+    memcpy(intp, PQgetvalue(result, row, col), sizeof(*intp));
     *intp = be32toh(*intp);
     return 0;
 }

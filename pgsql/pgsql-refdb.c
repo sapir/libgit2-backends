@@ -153,7 +153,7 @@ static int pgsql_refdb_backend__lookup(
         goto cleanup;
     }
 
-    if (get_int_from_result(result, &ref_type, 0)) {
+    if (get_int_from_result(result, &ref_type, 0, 0)) {
         error = GIT_ERROR;
         goto cleanup;
     }
