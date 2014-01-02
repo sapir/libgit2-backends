@@ -1,5 +1,7 @@
 #include <libpq-fe.h>
 #include <endian.h>
+#include <string.h>
+#include <git2/errors.h>
 #include "helpers.h"
 
 int get_int_from_result(PGresult *result, int *intp, int row, int col)
