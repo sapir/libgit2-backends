@@ -203,12 +203,6 @@ static int pgsql_refdb_backend__write(git_refdb_backend *_backend,
     return GIT_OK;
 }
 
-static int pgsql_refdb_backend__rename(
-    git_reference **out, git_refdb_backend *backend,
-    const char *old_name, const char *new_name, int force)
-{
-}
-
 static int pgsql_refdb_backend__del(git_refdb_backend *_backend,
     const char *ref_name)
 {
@@ -326,7 +320,6 @@ git_error_code git_refdb_backend_pgsql(git_refdb_backend **backend_out,
     backend->parent.lookup = &pgsql_refdb_backend__lookup;
     backend->parent.iterator = &pgsql_refdb_backend__iterator;
     backend->parent.write = &pgsql_refdb_backend__write;
-    backend->parent.rename = &pgsql_refdb_backend__rename;
     backend->parent.del = &pgsql_refdb_backend__del;
 
     *backend_out = (git_refdb_backend*)backend;
