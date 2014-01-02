@@ -13,7 +13,7 @@ int get_int_from_result(PGresult *result, int *intp, int row, int col)
 
     value_len = PQgetlength(result, row, col);
     if (value_len != sizeof(*intp)) {
-        giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
+        giterr_set_str(GITERR_ODB, "int column has bad size");
         return 1;
     }
 
