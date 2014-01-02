@@ -161,15 +161,33 @@ static int pgsql_refdb_backend__rename(
 {
 }
 
-static int pgsql_refdb_backend__del(git_refdb_backend *backend, const char *ref_name)
-{
-}
-
 static int complete_pq_exec(PGresult *result)
 {
     ExecStatusType exec_status = PQresultStatus(result);
     PQclear(result);
     return (PGRES_COMMAND_OK != exec_status);
+}
+
+static int pgsql_refdb_backend__del(git_refdb_backend *_backend,
+    const char *ref_name)
+{
+    pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
+    PGresult *result;
+    const char * const param_values[1] = {ref_name};
+    int param_lengths[1] = {strlen(ref_name)};
+    int param_formats[1] = {0};     /* text */
+
+    assert(data && backend && oid);
+
+    result = PQexecPrepared(backend->db, "del",
+        1, param_values, param_lengths, param_formats,
+        /* binary result */ 1);
+    if (complete_pq_exec(result)) {
+        set_giterr_from_pg(backend);
+        return GIT_ERROR;
+    }
+
+    return GIT_OK;
 }
 
 static int init_db(PGconn *db)
@@ -228,6 +246,13 @@ static int prepare_stmts(PGconn *db)
         4, NULL);
     if (complete_pq_exec(result))
         return 1;*/
+
+    result = PQprepare(db, "del",
+        "DELETE FROM \"" GIT2_REFDB_TABLE_NAME "\""
+        "  WHERE \"name\" = $1::text",
+        1, NULL);
+    if (complete_pq_exec(result))
+        return 1;
 
     return 0;
 }
