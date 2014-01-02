@@ -161,13 +161,6 @@ static int pgsql_refdb_backend__rename(
 {
 }
 
-static int complete_pq_exec(PGresult *result)
-{
-    ExecStatusType exec_status = PQresultStatus(result);
-    PQclear(result);
-    return (PGRES_COMMAND_OK != exec_status);
-}
-
 static int pgsql_refdb_backend__del(git_refdb_backend *_backend,
     const char *ref_name)
 {

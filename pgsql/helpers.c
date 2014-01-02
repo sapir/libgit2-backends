@@ -18,3 +18,10 @@ int get_int_from_result(PGresult *result, int *intp, int col_idx)
     *intp = be32toh(*intp);
     return 0;
 }
+
+int complete_pq_exec(PGresult *result)
+{
+    ExecStatusType exec_status = PQresultStatus(result);
+    PQclear(result);
+    return (PGRES_COMMAND_OK != exec_status);
+}

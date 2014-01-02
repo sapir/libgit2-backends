@@ -166,13 +166,6 @@ cleanup:
     return found;
 }
 
-static int complete_pq_exec(PGresult *result)
-{
-    ExecStatusType exec_status = PQresultStatus(result);
-    PQclear(result);
-    return (PGRES_COMMAND_OK != exec_status);
-}
-
 static int pgsql_odb_backend__write(git_odb_backend *_backend,
     const git_oid *oid, const void *data, size_t len, git_otype type)
 {
