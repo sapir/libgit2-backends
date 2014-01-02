@@ -53,12 +53,12 @@ static void pgsql_refdb_backend__free(git_refdb_backend *_backend)
     PQfinish(backend->db);
 }
 
-static PGresult *exec_read_stmt(pgsql_refdb_backend *backend, const char *stmt_name,
-    const git_oid *oid)
+static PGresult *exec_read_stmt(pgsql_refdb_backend *backend,
+    const char *stmt_name, const char *str_param)
 {
-    const char * const param_values[1] = {oid->id};
-    int param_lengths[1] = {20};
-    int param_formats[1] = {1};     /* binary */
+    const char * const param_values[1] = {str_param};
+    int param_lengths[1] = {strlen(str_param)};
+    int param_formats[1] = {0};     /* text */
     return PQexecPrepared(backend->db, stmt_name,
         1, param_values, param_lengths, param_formats,
         /* binary result */ 1);
@@ -66,9 +66,28 @@ static PGresult *exec_read_stmt(pgsql_refdb_backend *backend, const char *stmt_n
 
 static int pgsql_refdb_backend__exists(
     int *exists,
-    git_refdb_backend *backend,
+    git_refdb_backend *_backend,
     const char *ref_name)
 {
+    pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
+    PGresult *result;
+    int error = GIT_ERROR;
+
+    assert(exists && backend && ref_name);
+
+    result = exec_read_stmt(backend, "exists", ref_name);
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        error = GIT_ERROR;
+        set_giterr_from_pg(backend);
+        goto cleanup;
+    }
+
+    *exists = (PQntuples(result) > 0) ? 1 : 0;
+    error = GIT_OK;
+
+cleanup:
+    PQclear(result);
+    return error;
 }
 
 static int pgsql_refdb_backend__lookup(
@@ -145,17 +164,17 @@ static int prepare_stmts(PGconn *db)
         "  WHERE \"oid\" = $1::bytea",
         1, NULL);
     if (complete_pq_exec(result))
-        return 1;
+        return 1;*/
 
     result = PQprepare(db, "exists",
         "SELECT 1"
-        "  FROM \"" GIT2_TABLE_NAME "\""
-        "  WHERE \"oid\" = $1::bytea",
+        "  FROM \"" GIT2_REFDB_TABLE_NAME "\""
+        "  WHERE \"name\" = $1::text",
         1, NULL);
     if (complete_pq_exec(result))
         return 1;
 
-    result = PQprepare(db, "write",
+    /*result = PQprepare(db, "write",
         "INSERT INTO \"" GIT2_TABLE_NAME "\""
         "  (\"oid\", \"type\", \"size\", \"data\")"
         "  VALUES($1::bytea, $2::int, $3::int, $4::bytea)",
