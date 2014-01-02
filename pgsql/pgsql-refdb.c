@@ -138,7 +138,8 @@ static int init_db(PGconn *db)
         "CREATE TABLE IF NOT EXISTS \"" GIT2_REFDB_TABLE_NAME "\" ("
         "  \"name\" text NOT NULL,"
         "  \"type\" int NOT NULL,"
-        "  \"target\" text NOT NULL,"
+        "  \"target\" bytea NOT NULL,"
+        "  \"peel\" bytea NULL,"
         "  CONSTRAINT \"" GIT2_REFDB_PK_NAME "\" PRIMARY KEY (\"name\")"
         ");"
 
