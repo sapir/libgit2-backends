@@ -442,6 +442,7 @@ git_error_code git_refdb_backend_pgsql(git_refdb_backend **backend_out,
     if (error)
         goto cleanup;
 
+    backend->parent.version = GIT_REFDB_BACKEND_VERSION;
     backend->parent.exists = &pgsql_refdb_backend__exists;
     backend->parent.lookup = &pgsql_refdb_backend__lookup;
     backend->parent.iterator = &pgsql_refdb_backend__iterator;
