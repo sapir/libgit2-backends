@@ -150,9 +150,57 @@ static int pgsql_refdb_backend__iterator(
 {
 }
 
-static int pgsql_refdb_backend__write(git_refdb_backend *backend,
+static int pgsql_refdb_backend__write(git_refdb_backend *_backend,
     const git_reference *ref, int force)
 {
+    pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
+    PGresult *result;
+
+    const char *ref_name = git_reference_name(ref);
+    int ref_type = git_reference_type(ref);
+    uint32_t fmtd_ref_type = htobe32(ref_type);
+
+    const char *ref_peel = (const char *)git_reference_target_peel(ref);
+    int ref_peel_size = (ref_peel == NULL) ? 0 : GIT_OID_RAWSZ;
+
+    const char *ref_tgt;
+    int ref_tgt_size;
+    switch (ref_type) {
+    case GIT_REF_OID:
+        ref_tgt = (const char*)git_reference_target(ref);
+        ref_tgt_size = (ref_tgt == NULL) ? 0 : GIT_OID_RAWSZ;
+        break;
+
+    case GIT_REF_SYMBOLIC:
+        ref_tgt = git_reference_symbolic_target(ref);
+        ref_tgt_size = (ref_tgt == NULL) ? 0 : strlen(ref_tgt);
+        break;
+
+    default:
+        return GIT_ERROR;
+    }
+
+    const char * const param_values[4] =
+        { ref_name, (const char*)&fmtd_ref_type, ref_tgt, ref_peel };
+
+    int param_lengths[4] =
+        {strlen(ref_name), sizeof(fmtd_ref_type), ref_tgt_size, ref_peel_size};
+
+    int param_formats[4] = {1, 1, 1, 1};     /* binary */
+
+    if (force && _backend->del(_backend, ref_name)) {
+        return GIT_ERROR;
+    }
+
+    result = PQexecPrepared(backend->db, "write",
+        4, param_values, param_lengths, param_formats,
+        /* binary result */ 1);
+    if (complete_pq_exec(result)) {
+        set_giterr_from_pg(backend);
+        return GIT_ERROR;
+    }
+
+    return GIT_OK;
 }
 
 static int pgsql_refdb_backend__rename(
@@ -232,13 +280,13 @@ static int prepare_stmts(PGconn *db)
     if (complete_pq_exec(result))
         return 1;
 
-    /*result = PQprepare(db, "write",
-        "INSERT INTO \"" GIT2_TABLE_NAME "\""
-        "  (\"oid\", \"type\", \"size\", \"data\")"
-        "  VALUES($1::bytea, $2::int, $3::int, $4::bytea)",
+    result = PQprepare(db, "write",
+        "INSERT INTO \"" GIT2_REFDB_TABLE_NAME "\""
+        "  (\"name\", \"type\", \"target\", \"peel\")"
+        "  VALUES($1::text, $2::int, $3::bytea, $4::bytea)",
         4, NULL);
     if (complete_pq_exec(result))
-        return 1;*/
+        return 1;
 
     result = PQprepare(db, "del",
         "DELETE FROM \"" GIT2_REFDB_TABLE_NAME "\""
