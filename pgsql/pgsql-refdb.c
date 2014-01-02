@@ -28,6 +28,7 @@
 #include <libpq-fe.h>
 #include <git2.h>
 #include <git2/sys/refdb_backend.h>
+#include <git2/sys/refs.h>
 #include "helpers.h"
 
 
@@ -93,9 +94,53 @@ cleanup:
 
 static int pgsql_refdb_backend__lookup(
     git_reference **out,
-    git_refdb_backend *backend,
+    git_refdb_backend *_backend,
     const char *ref_name)
 {
+    pgsql_refdb_backend *backend = (pgsql_refdb_backend*)_backend;
+    PGresult *result;
+    int error = GIT_ERROR;
+    int ref_type;
+    const char *ref_tgt;
+    const char *ref_peel;
+
+    assert(out && backend && ref_name);
+
+    result = exec_read_stmt(backend, "lookup", ref_name);
+    if (PQresultStatus(result) != PGRES_TUPLES_OK) {
+        error = GIT_ERROR;
+        set_giterr_from_pg(backend);
+        goto cleanup;
+    }
+
+    if (PQntuples(result) == 0) {
+        error = GIT_ENOTFOUND;
+        goto cleanup;
+    }
+
+    if (get_int_from_result(result, &ref_type, 0)) {
+        error = GIT_ERROR;
+        goto cleanup;
+    }
+
+    ref_tgt = PQgetvalue(result, 0, 1);
+    ref_peel = PQgetvalue(result, 0, 2);
+
+    if (ref_type == GIT_REF_SYMBOLIC) {
+        *out = git_reference__alloc_symbolic(ref_name, ref_tgt);
+    } else if (ref_type == GIT_REF_OID) {
+        *out = git_reference__alloc(ref_name, (git_oid*)ref_tgt,
+            (git_oid*)ref_peel);
+    } else {
+        error = GIT_ERROR;
+        goto cleanup;
+    }
+
+    error = GIT_OK;
+
+cleanup:
+    PQclear(result);
+    return error;
 }
 
 static int pgsql_refdb_backend__iterator(
@@ -152,15 +197,15 @@ static int prepare_stmts(PGconn *db)
 {
     PGresult *result;
 
-    /*result = PQprepare(db, "read",
-        "SELECT \"type\", \"size\", \"data\""
-        "  FROM \"" GIT2_TABLE_NAME "\""
-        "  WHERE \"oid\" = $1::bytea",
+    result = PQprepare(db, "lookup",
+        "SELECT \"type\", \"target\", \"peel\""
+        "  FROM \"" GIT2_REFDB_TABLE_NAME "\""
+        "  WHERE \"name\" = $1::text",
         1, NULL);
     if (complete_pq_exec(result))
         return 1;
 
-    result = PQprepare(db, "read_header",
+    /*result = PQprepare(db, "read_header",
         "SELECT \"type\", \"size\""
         "  FROM \"" GIT2_TABLE_NAME "\""
         "  WHERE \"oid\" = $1::bytea",
