@@ -92,6 +92,41 @@ cleanup:
     return error;
 }
 
+static char *glob_to_like_pattern(const char *glob)
+{
+    const int glob_len = strlen(glob);
+    /* at most, each char of the glob will be translated into 2 chars */
+    char *like_pattern = calloc(1, glob_len * 2 + 1);
+    int i = 0;
+    int j = 0;
+
+    for (; glob[i] != '\0'; ++i) {
+        switch (glob[i]) {
+        /* escaping */
+        case '%':
+        case '_':
+            like_pattern[j++] = '\\';
+            like_pattern[j++] = glob[i];
+            break;
+
+        /* like equivalents for glob wildcards */
+        case '*':
+            like_pattern[j++] = '%';
+            break;
+
+        case '?':
+            like_pattern[j++] = '_';
+            break;
+
+        default:
+            like_pattern[j++] = glob[i];
+            break;
+        }
+    }
+
+    return like_pattern;
+}
+
 static int pgsql_refdb_backend__lookup(
     git_reference **out,
     git_refdb_backend *_backend,
@@ -261,7 +296,7 @@ static int prepare_stmts(PGconn *db)
     result = PQprepare(db, "iterator",
         "SELECT \"name\", \"type\", \"target\", \"peel\""
         "  FROM \"" GIT2_REFDB_TABLE_NAME "\""
-        "  WHERE \"name\" LIKE $1::text",
+        "  WHERE \"name\" LIKE $1::text ESCAPE '\\\\'",
         1, NULL);
     if (complete_pq_exec(result))
         return 1;
