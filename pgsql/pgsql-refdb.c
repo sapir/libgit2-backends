@@ -28,6 +28,7 @@
 #include <libpq-fe.h>
 #include <git2.h>
 #include <git2/sys/refdb_backend.h>
+#include "helpers.h"
 
 
 #define GIT2_REFDB_TABLE_NAME "git2_refdb"

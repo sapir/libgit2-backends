@@ -29,6 +29,7 @@
 #include <endian.h>
 #include <git2.h>
 #include <git2/sys/odb_backend.h>
+#include "helpers.h"
 
 
 #define GIT2_TABLE_NAME "git2_odb"
@@ -66,22 +67,6 @@ static PGresult *exec_read_stmt(pgsql_odb_backend *backend, const char *stmt_nam
         /* binary result */ 1);
 }
 
-static int get_int_from_result(PGresult *result, int *intp, int col_idx)
-{
-    int value_len;
-
-    assert(result && intp);
-
-    value_len = PQgetlength(result, 0, col_idx);
-    if (value_len != sizeof(*intp)) {
-        giterr_set_str(GITERR_ODB, "\"type\" column has bad size");
-        return 1;
-    }
-
-    memcpy(intp, PQgetvalue(result, 0, col_idx), sizeof(*intp));
-    *intp = be32toh(*intp);
-    return 0;
-}
 
 static int pgsql_odb_backend__read_header(size_t *len_p, git_otype *type_p,
     git_odb_backend *_backend, const git_oid *oid)
