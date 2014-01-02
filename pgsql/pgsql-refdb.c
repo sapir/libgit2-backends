@@ -374,7 +374,7 @@ static int prepare_stmts(PGconn *db)
     PGresult *result;
 
     result = PQprepare(db, "lookup",
-        "SELECT \"type\", \"target\", \"peel\""
+        "SELECT \"name\", \"type\", \"target\", \"peel\""
         "  FROM \"" GIT2_REFDB_TABLE_NAME "\""
         "  WHERE \"name\" = $1::text",
         1, NULL);
